@@ -1,0 +1,126 @@
+---
+description: Next.js Project Guidelines for Dashboard Template
+globs: ["**/*.tsx", "**/*.ts", "**/*.js", "**/*.jsx", "**/*.json"]
+alwaysApply: true
+---
+# Next.js Project Guidelines
+
+---
+
+## 1. Project Structure
+
+* Use the **`src`** directory for all source code.
+* Place pages in **`src/pages`**.
+* Place shared components in the **`src/components`** directory.
+* Place utility functions and helpers in the **`src/lib`** directory.
+* Place global styles and Tailwind configuration in **`src/styles`**.
+* Use **lowercase with dashes** for directories (e.g., `src/components/common-ui`).
+* For better readability, consider setting up **path aliases** in `tsconfig.json` (e.g., `@/components/*`) to avoid long relative paths like `../../../components/Button`.
+
+---
+
+## 2. Dependency and Library Management
+
+Since you're using **Next.js version 14.2.30**, always verify that any external libraries, UI components, or utilities you add are compatible with this specific version and the **Pages Router** architecture by checking their official documentation. Newer libraries might be designed with the App Router first, so confirming Pages Router support is crucial to prevent unexpected build errors or runtime issues.
+
+---
+
+## 3. Components
+
+* Distinguish between **page components** (in `src/pages`) and **reusable components** (in `src/components`).
+* Keep page components focused on layout and data flow.
+* Create small, single-purpose reusable components.
+* Use **`next/dynamic`** for dynamically importing components that aren't critical for the initial page load (e.g., modals, components below the fold).
+* Define **TypeScript interfaces or types** for component props next to the component definition for clarity.
+
+---
+
+## 4. Performance
+
+* Optimize images using the **`next/image`** component for automatic optimization, WebP format conversion, and lazy loading.
+* Choose the right data fetching method for performance:
+    * **`getStaticProps` (SSG)** for pages that can be pre-rendered at build time.
+    * **`getServerSideProps` (SSR)** for pages that require fresh data on every request.
+* Minimize the use of **`useEffect`** for data fetching. Prefer `getStaticProps` or `getServerSideProps` for the initial data.
+* Implement proper caching strategies for server-side fetched data.
+
+---
+
+## 5. Data Fetching
+
+* Use **`getStaticProps`** or **`getServerSideProps`** in your page files for server-side data fetching.
+* For client-side data fetching (e.g., fetching data after user interaction), use libraries like **SWR** or **React Query**.
+* Always implement proper **loading and error states** when fetching data.
+
+---
+
+## 6. Routing
+
+* Use the **file-system based routing** within the `src/pages` directory. A file like `src/pages/about.tsx` automatically becomes the `/about` route.
+* For dynamic routes, use **bracket notation** in filenames (e.g., `src/pages/posts/[id].tsx`).
+* Use the **`useRouter`** hook for programmatic navigation and accessing router properties.
+* To create a shared layout for all pages, create a custom `App` component (**`src/pages/_app.tsx`**) and wrap the page `Component` with your layout.
+
+---
+
+## 7. Forms and Validation
+
+* Use a library like **Zod** for schema-based form validation on both the client and server.
+* Always implement **server-side validation** as a security measure, even if client-side validation exists.
+* Handle form errors gracefully and display clear messages to the user.
+* Show loading states (e.g., disabling the submit button) during form submission to prevent multiple submissions.
+
+---
+
+## 8. State Management
+
+* Minimize client-side state. Fetch data via page props whenever possible.
+* Use **React Context** for global state that is truly global (e.g., theme, user authentication), but use it sparingly to avoid performance issues.
+* For complex client-side state, consider a dedicated state management library like **Zustand** or **Jotai**, which are lightweight and work well with Next.js. 
+
+---
+
+## 9. 오류 대비 디버깅 가이드 (Debugging & Error Handling)
+
+- **표준 로깅 사용**: 클라이언트/서버 공통으로 사용 가능한 로깅 헬퍼를 일관되게 사용한다. 예: `src/lib/logger.ts`에 `logDebug`, `logInfo`, `logWarn`, `logError` 유틸을 두고 전역으로 사용한다. (없다면 우선 간단한 래퍼를 추가한다)
+- **위치 정보 포함**: 모든 로그에는 반드시 아래 정보를 포함한다.
+  - **debugId**: 요청/액션 단위로 생성되는 유니크 식별자 (예: `crypto.randomUUID()`)
+  - **컨텍스트**: 파일 경로 또는 컴포넌트/함수명 (예: `UserList.tsx#fetchUsers`)
+  - **흐름상태**: 단계(`mounted`, `submit:start`, `submit:success`, `api:error` 등)와 관련 파라미터 일부
+- **오류 처리 패턴**:
+  - 클라이언트 비동기 로직은 `try/catch`로 감싸고, `catch`에서 `logError({ debugId, error, context, extra })`를 호출한다.
+  - API Route/서버 로직은 오류 시 `logError` 후, 응답 본문에 **사용자용 메시지**와 **debugId**를 함께 반환한다. 예: `{ message: '작업을 완료할 수 없습니다. 잠시 후 다시 시도해주세요.', debugId }` (민감정보 포함 금지)
+  - 사용자 UI에는 친화적 메시지를, 콘솔/서버 로그에는 상세 스택과 컨텍스트를 남긴다.
+- **디버깅 로그 위치 안내**:
+  - 개발환경: 클라이언트 오류/디버그는 브라우저 콘솔(Log level 별 보기), 서버/라우트 오류는 터미널(Next.js dev server)에서 확인한다.
+  - 프로덕션: 서버 로그는 배포 대상의 표준 출력/로그 수집 시스템(예: Vercel Logs)에서, 클라이언트 오류는 모니터링 도구(선택: Sentry 등)를 통해 확인한다. 모든 오류 메시지에 **debugId**를 포함하여 로그에서 추적 가능하도록 한다.
+- **에러 바운더리**:
+  - UI는 컴포넌트 단위 `ErrorBoundary`를 사용해 치명적 렌더 오류를 격리하고 대체 UI를 제공한다.
+  - Pages Router 사용 시, 전역 오류 페이지(`src/pages/_error.tsx`) 또는 커스텀 처리와 병행한다.
+- **로그 포맷 예시**:
+  - `[DEBUG][debugId=3c7a...] [UserList#fetchUsers] state=submit:start, payload={ page: 1 }`
+  - `[ERROR][debugId=3c7a...] [api/users] message="Failed to fetch users" stack=... cause=...`
+
+---
+
+## 10. 주석과 문서화 (Comments & Documentation)
+
+- **원칙**: 코드의 의도와 설계 결정을 중심으로 주석을 작성한다. 무엇을/왜 그렇게 했는지를 남기고, 자명한 내용의 주석은 피한다.
+- **함수/유틸 (TSDoc 권장)**:
+  - 블록 주석으로 역할, 파라미터, 반환값, 던질 수 있는 오류, 성능/부작용, 간단한 예시를 문서화한다.
+  - 예: `/** 설명, @param, @returns, @throws, @example */`
+- **컴포넌트**:
+  - 컴포넌트 목적, 주요 상호작용, 중요한 상태/효과(`useEffect`)의 이유, 접근성 고려사항(키보드 포커스, ARIA 속성) 등을 문서화한다.
+  - `Props` 인터페이스 옆에 각 필드의 의미/필수 여부/기본값을 설명한다.
+- **파일 헤더**:
+  - 복잡한 모듈/페이지 파일 상단에는 파일의 책임, 외부 의존성, 주요 내보내기, 주의사항을 간략히 명시한다.
+- **복잡한 로직/쿼리/알고리즘**:
+  - 대안 비교, 트레이드오프, 시간/공간 복잡도, 캐싱 전략 등 의사결정 근거를 남긴다.
+- **언어**:
+  - 주석은 팀 합의에 따라 한국어를 기본으로 하되, 외부 공유/오픈소스화를 고려해 필요한 곳은 영어를 병기한다.
+- **PR 체크리스트**:
+  - 주요 함수/컴포넌트에 TSDoc/설명 주석이 있는가?
+  - 오류 경로에 `logError`가 호출되고 `debugId`가 노출되는가?
+  - 사용자에게 표시되는 메시지에서 민감정보가 제거되었는가?
+  - 추가된 로직의 의도와 제약이 주석으로 남아있는가?
+
