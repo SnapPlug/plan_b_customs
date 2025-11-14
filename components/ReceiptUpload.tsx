@@ -353,7 +353,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   };
 
   return (
-    <div className="w-full pt-48 sm:pt-56 space-y-4">
+    <div className="w-full pt-48 sm:pt-56 md:pt-0 space-y-4">
       {/* 파일 목록 */}
       {files.length > 0 && (
         <div className="space-y-4">
