@@ -11,6 +11,7 @@
 
 import { useState, useCallback, DragEvent, ChangeEvent } from 'react';
 import Image from 'next/image';
+import { Check, X, Loader2, Camera } from 'lucide-react';
 import Toast from './Toast';
 
 export interface DriveUploadResult {
@@ -352,64 +353,13 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   };
 
   return (
-    <div className="w-full space-y-4">
-      {/* 업로드 영역 */}
-      <div
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDragOver={handleDragOver}
-        onDrop={handleDrop}
-        className={`
-          relative flex flex-col items-center justify-center
-          w-full h-64 px-6 py-10
-          border-2 border-dashed rounded-[4px]
-          transition-colors cursor-pointer
-          ${
-            isDragging
-              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
-              : 'border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'
-          }
-          hover:border-gray-400 dark:hover:border-gray-600
-        `}
-      >
-        <input
-          type="file"
-          accept="image/jpeg,image/jpg,image/png"
-          onChange={handleFileChange}
-          multiple
-          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-          aria-label="영수증 이미지 업로드"
-        />
-
-        <svg
-          className="w-12 h-12 mb-4 text-gray-400 dark:text-gray-500"
-          fill="none"
-          stroke="currentColor"
-          viewBox="0 0 24 24"
-          xmlns="http://www.w3.org/2000/svg"
-        >
-          <path
-            strokeLinecap="round"
-            strokeLinejoin="round"
-            strokeWidth={2}
-            d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-          />
-        </svg>
-
-        <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-          <span className="font-semibold">클릭하여 업로드</span> 또는 드래그 앤 드롭
-        </p>
-        <p className="text-xs text-gray-500 dark:text-gray-500">
-          JPEG, PNG (최대 10MB, 여러 파일 선택 가능)
-        </p>
-      </div>
-
+    <div className="w-full pt-48 sm:pt-56 space-y-4">
       {/* 파일 목록 */}
       {files.length > 0 && (
         <div className="space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">
-              업로드된 파일 ({files.length}개)
+              업로드 된 영수증 ({files.length}개)
             </h3>
             {files.length > 0 && (
               <button
@@ -421,7 +371,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
             )}
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4">
             {files.map((fileState) => (
               <div
                 key={`${fileState.file.name}-${fileState.file.lastModified}`}
@@ -462,48 +412,33 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                     </div>
                   )}
                   
-                  {fileState.status === 'success' && (
-                    <div className="absolute top-2 right-2 bg-green-500 text-white text-xs px-2 py-1 rounded-full">
-                      완료
-                    </div>
-                  )}
-                  
-                  {fileState.status === 'error' && (
-                    <div className="absolute top-2 right-2 bg-red-500 text-white text-xs px-2 py-1 rounded-full">
-                      실패
-                    </div>
-                  )}
                 </div>
 
                 {/* 파일 정보 */}
                 <div className="p-3 space-y-1">
-                  <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate">
-                    {fileState.file.name}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs font-medium text-gray-900 dark:text-gray-100 truncate flex-1">
+                      {fileState.file.name}
+                    </p>
+                    {fileState.status === 'uploading' && (
+                      <Loader2 className="w-3 h-3 text-blue-600 dark:text-blue-400 animate-spin flex-shrink-0" />
+                    )}
+                    {fileState.status === 'success' && (
+                      <div className="bg-green-500 rounded-full p-1 flex items-center justify-center flex-shrink-0">
+                        <Check className="w-3 h-3 text-white" strokeWidth={3} />
+                      </div>
+                    )}
+                    {fileState.status === 'error' && (
+                      <div className="bg-red-500 rounded-full p-1 flex items-center justify-center flex-shrink-0">
+                        <X className="w-3 h-3 text-white" strokeWidth={3} />
+                      </div>
+                    )}
+                  </div>
                   <p className="text-xs text-gray-500 dark:text-gray-400">
-                    {(fileState.file.size / 1024).toFixed(2)} KB
+                    {(fileState.file.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                   
-                  {/* 상태 메시지 */}
-                  {fileState.status === 'uploading' && (
-                    <p className="text-xs text-blue-600 dark:text-blue-400">업로드 중...</p>
-                  )}
-                  
-                  {fileState.status === 'success' && fileState.result && (
-                    <div className="space-y-1">
-                      <p className="text-xs text-green-600 dark:text-green-400">업로드 완료</p>
-                      {fileState.result.url && (
-                        <a
-                          href={fileState.result.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-xs text-blue-600 hover:underline dark:text-blue-400"
-                        >
-                          이미지 확인
-                        </a>
-                      )}
-                    </div>
-                  )}
+                 
                   
                   {fileState.status === 'error' && fileState.error && (
                     <p className="text-xs text-red-600 dark:text-red-400 truncate">
@@ -518,26 +453,62 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                     className="mt-2 w-full px-2 py-1 text-xs text-red-600 hover:text-red-800 disabled:opacity-50 disabled:cursor-not-allowed dark:text-red-400 dark:hover:text-red-300 transition-colors rounded-[4px] border border-red-300 dark:border-red-700 hover:bg-red-50 dark:hover:bg-red-900/20"
                     aria-label="파일 제거"
                   >
-                    제거
+                    삭제
                   </button>
                 </div>
               </div>
             ))}
           </div>
+        </div>
+      )}
 
-          {/* 완료하기 버튼 */}
-          {isAllUploadsComplete && (
-            <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={() => {
-                  setShowToast(true);
-                }}
-                className="w-full px-6 py-3 text-base font-medium text-white bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 rounded-[4px] transition-colors"
-              >
-                완료하기
-              </button>
-            </div>
-          )}
+      {/* 업로드 영역 */}
+      <div
+        onDragEnter={handleDragEnter}
+        onDragLeave={handleDragLeave}
+        onDragOver={handleDragOver}
+        onDrop={handleDrop}
+        className={`
+          relative flex flex-col items-center justify-center gap-3
+          w-full max-w-md mx-auto
+          border-2 border-dashed rounded-[4px]
+          transition-colors cursor-pointer
+          ${
+            isDragging
+              ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/20'
+              : 'border-gray-300 bg-gray-50 dark:border-gray-700 dark:bg-gray-900'
+          }
+          hover:border-gray-400 dark:hover:border-gray-600
+        `}
+      >
+        <input
+          type="file"
+          accept="image/jpeg,image/jpg,image/png"
+          onChange={handleFileChange}
+          multiple
+          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+          aria-label="영수증 이미지 업로드"
+        />
+
+        <div className="flex flex-col items-center justify-center gap-3 py-8 px-6">
+          <Camera className="w-10 h-10 text-gray-400 dark:text-gray-500" strokeWidth={2} />
+          <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
+            {files.length > 0 ? '영수증을 추가해주세요' : '영수증을 업로드해주세요'}
+          </p>
+        </div>
+      </div>
+
+      {/* 완료하기 버튼 */}
+      {isAllUploadsComplete && (
+        <div className="pt-4">
+          <button
+            onClick={() => {
+              setShowToast(true);
+            }}
+            className="flex h-12 w-full items-center justify-center gap-2 rounded-[4px] bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+          >
+            완료하기
+          </button>
         </div>
       )}
 

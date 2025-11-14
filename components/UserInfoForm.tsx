@@ -97,12 +97,12 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
   };
 
   return (
-    <div className="w-full max-w-md space-y-6">
+    <div className="w-full max-w-md space-y-6 px-3">
       <div className="space-y-2">
-        <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
+        <h2 className="text-xl font-semibold text-black dark:text-zinc-50">
           사용자 정보 입력
         </h2>
-        <p className="text-sm text-gray-600 dark:text-gray-400">
+        <p className="text-xs text-gray-500 dark:text-gray-400">
           영수증 처리를 위해 이름 혹은 사업자명을 입력해주세요.
         </p>
       </div>
@@ -110,12 +110,7 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* 이름 입력 */}
         <div className="space-y-2">
-          <label
-            htmlFor="name"
-            className="block text-sm font-medium text-gray-700 dark:text-gray-300"
-          >
-            이름/사업자명 <span className="text-red-500">*</span>
-          </label>
+
           <input
             id="name"
             type="text"
@@ -170,14 +165,6 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
             `}
           >
             {isSubmitting ? '처리 중...' : '다음'}
-          </button>
-          <button
-            type="button"
-            onClick={onCancel}
-            disabled={isSubmitting}
-            className="flex h-12 w-full items-center justify-center rounded-[4px] px-5 text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200 transition-colors"
-          >
-            ← 뒤로가기
           </button>
         </div>
       </form>
