@@ -106,17 +106,29 @@ export async function POST(req: NextRequest) {
     console.log("[upload] Cloudinary 업로드 성공:", uploadResult.public_id);
     console.log("[upload] 메타데이터:", { invoiceName, userName, userPhone });
 
+    // Cloudinary 원본 응답 형식에 맞게 반환
     return NextResponse.json(
       {
-        fileId: uploadResult.public_id,
-        name: uploadResult.original_filename || file.name,
-        url: uploadResult.secure_url,
-        webViewLink: uploadResult.secure_url, // 호환성을 위해
-        webContentLink: uploadResult.url, // 호환성을 위해
+        // Cloudinary 원본 필드들
+        asset_id: uploadResult.asset_id,
+        public_id: uploadResult.public_id,
         format: uploadResult.format,
+        version: uploadResult.version,
+        resource_type: uploadResult.resource_type,
+        type: uploadResult.type,
+        created_at: uploadResult.created_at,
+        bytes: uploadResult.bytes,
         width: uploadResult.width,
         height: uploadResult.height,
-        bytes: uploadResult.bytes,
+        asset_folder: uploadResult.asset_folder || invoiceName || undefined,
+        display_name: uploadResult.display_name || uploadResult.original_filename || file.name,
+        url: uploadResult.url,
+        secure_url: uploadResult.secure_url,
+        // 호환성을 위한 필드들
+        fileId: uploadResult.public_id,
+        name: uploadResult.original_filename || file.name,
+        webViewLink: uploadResult.secure_url,
+        webContentLink: uploadResult.url,
         // 사용자 정보 및 인보이스명 포함 (구글 시트 저장용)
         invoiceName: invoiceName || undefined,
         userName: userName || undefined,

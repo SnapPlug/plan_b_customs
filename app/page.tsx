@@ -55,7 +55,7 @@ export default function Home() {
     <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
       <main className="relative flex min-h-screen w-full max-w-full flex-col items-center gap-10 px-4 py-10 bg-white dark:bg-black">
 
-        <header className="flex flex-col items-center gap-6 text-center relative w-full max-w-3xl pt-4">
+        <header className="flex flex-col items-center gap-6 text-center relative w-full pt-4">
           {showUpload || showUserInfo ? (
             <>
               <button

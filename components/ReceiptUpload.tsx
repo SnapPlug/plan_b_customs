@@ -27,6 +27,16 @@ export interface DriveUploadResult {
   invoiceName?: string; // 인보이스명 (구글 시트 저장용)
   userName?: string; // 사용자 이름 (구글 시트 저장용)
   userPhone?: string; // 사용자 전화번호 (구글 시트 저장용)
+  // Cloudinary 원본 필드들
+  asset_id?: string;
+  public_id?: string;
+  version?: number;
+  resource_type?: string;
+  type?: string;
+  created_at?: string;
+  asset_folder?: string;
+  display_name?: string;
+  secure_url?: string;
 }
 
 interface FileUploadState {
@@ -502,8 +512,58 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
       {isAllUploadsComplete && (
         <div className="pt-4">
           <button
-            onClick={() => {
-              setShowToast(true);
+            onClick={async () => {
+              try {
+                // 업로드 성공한 파일 정보를 Cloudinary 원본 형식으로 변환
+                const successfulFiles = files
+                  .filter((f) => f.status === 'success' && f.result)
+                  .map((f) => {
+                    const result = f.result!;
+                    // Cloudinary 원본 응답 형식으로 변환
+                    return {
+                      asset_id: result.asset_id || '',
+                      public_id: result.public_id || result.fileId,
+                      format: result.format || '',
+                      version: result.version || 0,
+                      resource_type: result.resource_type || 'image',
+                      type: result.type || 'upload',
+                      created_at: result.created_at || new Date().toISOString(),
+                      bytes: result.bytes || 0,
+                      width: result.width || 0,
+                      height: result.height || 0,
+                      asset_folder: result.asset_folder || invoiceName || undefined,
+                      display_name: result.display_name || result.name || f.file.name,
+                      url: result.url || result.webContentLink || '',
+                      secure_url: result.secure_url || result.webViewLink || '',
+                    };
+                  });
+
+                // Make.com 웹훅 호출 (파일 배열만 전송)
+                const response = await fetch('/api/make-webhook', {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify(successfulFiles),
+                });
+
+                if (!response.ok) {
+                  const errorData = await response.json().catch(() => ({}));
+                  throw new Error(
+                    errorData.message || '웹훅 호출에 실패했습니다.'
+                  );
+                }
+
+                // 성공 시 Toast 표시
+                setShowToast(true);
+              } catch (error) {
+                console.error('완료 처리 중 오류:', error);
+                alert(
+                  error instanceof Error
+                    ? error.message
+                    : '처리 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.'
+                );
+              }
             }}
             className="flex h-12 w-full items-center justify-center gap-2 rounded-[4px] bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
           >
