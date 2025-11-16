@@ -538,6 +538,20 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                     };
                   });
 
+                // 파일이 없으면 웹훅 호출하지 않음 (빈 body 방지)
+                if (successfulFiles.length === 0) {
+                  alert('업로드된 영수증이 없습니다. 영수증을 업로드한 후 다시 시도해주세요.');
+                  return;
+                }
+
+                // 디버깅 로그
+                console.log('[ReceiptUpload] Sending to webhook:', {
+                  fileCount: successfulFiles.length,
+                  files: successfulFiles,
+                  invoiceName,
+                  userName,
+                });
+
                 // Make.com 웹훅 호출 (파일 배열만 전송)
                 const response = await fetch('/api/make-webhook', {
                   method: 'POST',
