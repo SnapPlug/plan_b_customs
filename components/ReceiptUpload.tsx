@@ -9,7 +9,7 @@
 
 'use client';
 
-import { useState, useCallback, DragEvent, ChangeEvent } from 'react';
+import { useState, useCallback, DragEvent, ChangeEvent, useEffect } from 'react';
 import Image from 'next/image';
 import { Check, X, Loader2, Camera } from 'lucide-react';
 import Toast from './Toast';
@@ -72,6 +72,14 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   const [files, setFiles] = useState<FileUploadState[]>([]);
   const [showToast, setShowToast] = useState(false);
   const [showGuideModal, setShowGuideModal] = useState(false);
+  const [showWarningModal, setShowWarningModal] = useState(false);
+
+  /**
+   * 컴포넌트 마운트 시 주의사항 팝업 표시
+   */
+  useEffect(() => {
+    setShowWarningModal(true);
+  }, []);
 
   /**
    * 모든 파일의 업로드가 완료되었는지 확인
@@ -808,6 +816,112 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
             }
           }}
         />
+      )}
+
+      {/* 영수증 업로드 주의사항 팝업 */}
+      {showWarningModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4 py-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receipt-warning-title"
+        >
+          <div className="relative w-full max-w-3xl max-h-[90vh] rounded-[8px] bg-white shadow-2xl dark:bg-gray-900 overflow-y-auto">
+            <div className="sticky top-0 bg-white dark:bg-gray-900 z-10 px-4 pt-4 pb-2 border-b border-gray-200 dark:border-gray-700">
+              <button
+                type="button"
+                onClick={() => setShowWarningModal(false)}
+                className="absolute right-4 top-4 text-sm text-gray-500 transition-colors hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+                aria-label="주의사항 팝업 닫기"
+              >
+                ✕
+              </button>
+              <h2 id="receipt-warning-title" className="text-xl sm:text-2xl font-semibold text-gray-900 dark:text-gray-100 pr-8">
+                영수증 업로드시 주의사항
+              </h2>
+            </div>
+
+            <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
+              {/* 세부 주의사항 */}
+              <div className="space-y-2 sm:space-y-3">
+                <p className="text-xs sm:text-sm font-medium text-gray-700 dark:text-gray-300">
+                  영수증을 정확하게 인식하기 위해 아래 사항을 확인해주세요:
+                </p>
+                <ul className="list-disc space-y-1 sm:space-y-2 pl-4 sm:pl-5 text-xs sm:text-sm text-gray-600 dark:text-gray-400">
+                  <li>영수증 전체가 프레임 안에 나오도록 촬영해주세요.</li>
+                  <li>흔들리지 않게, 가까이, 빛 반사 없이 촬영해주세요.</li>
+                  <li>접히거나 구겨진 부분이 보이지 않게 펴서 촬영해주세요.</li>
+                  <li>영수증이 선명하게 보이도록 조명을 확인해주세요.</li>
+                  <li>배경이 단색일수록 인식률이 올라갑니다.</li>
+                </ul>
+              </div>
+
+              {/* 2열 이미지 레이아웃 - 모바일에서도 2열 */}
+              <div className="grid grid-cols-2 gap-2 sm:gap-4">
+                {/* 왼쪽: 이렇게하면 안되요 */}
+                <div className="space-y-1 sm:space-y-2">
+                  <h3 className="text-xs sm:text-base font-semibold text-red-600 dark:text-red-400 text-center">
+                    이렇게하면 안되요
+                  </h3>
+                  <div className="relative w-full aspect-[2/3] sm:aspect-[3/4] rounded-[6px] sm:rounded-[8px] bg-gray-100 border-2 border-red-300 dark:bg-gray-800 dark:border-red-700 overflow-hidden">
+                    <Image
+                      src="/receipt-bad-example.png"
+                      alt="잘못된 영수증 촬영 예시"
+                      fill
+                      sizes="(max-width: 640px) 50vw, 25vw"
+                      className="object-cover"
+                      onError={(e) => {
+                        // 이미지가 없을 경우 placeholder 표시
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-xs">이미지 준비 중</div>';
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+
+                {/* 오른쪽: 이렇게 해주세요 */}
+                <div className="space-y-1 sm:space-y-2">
+                  <h3 className="text-xs sm:text-base font-semibold text-green-600 dark:text-green-400 text-center">
+                    이렇게 해주세요
+                  </h3>
+                  <div className="relative w-full aspect-[2/3] sm:aspect-[3/4] rounded-[6px] sm:rounded-[8px] bg-gray-100 border-2 border-green-300 dark:bg-gray-800 dark:border-green-700 overflow-hidden">
+                    <Image
+                      src="/receipt-good-example.png"
+                      alt="올바른 영수증 촬영 예시"
+                      fill
+                      sizes="(max-width: 640px) 50vw, 25vw"
+                      className="object-cover"
+                      onError={(e) => {
+                        // 이미지가 없을 경우 placeholder 표시
+                        const target = e.target as HTMLImageElement;
+                        target.style.display = 'none';
+                        const parent = target.parentElement;
+                        if (parent) {
+                          parent.innerHTML = '<div class="flex items-center justify-center h-full text-gray-400 text-xs">이미지 준비 중</div>';
+                        }
+                      }}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* 확인 버튼 */}
+              <div className="flex justify-end pt-2 sm:pt-4">
+                <button
+                  type="button"
+                  onClick={() => setShowWarningModal(false)}
+                  className="rounded-[4px] bg-foreground px-4 sm:px-6 py-2 text-xs sm:text-sm font-medium text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc]"
+                >
+                  확인했습니다
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* 촬영 가이드 모달 */}
