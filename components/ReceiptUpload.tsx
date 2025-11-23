@@ -37,10 +37,13 @@ export interface DriveUploadResult {
   asset_folder?: string;
   display_name?: string;
   secure_url?: string;
+  // 전처리된 이미지 URL
+  processed_url?: string;
 }
 
 interface FileUploadState {
-  file: File;
+  file: File; // 원본 파일
+  rotatedFile?: File; // 회전된 파일 (있으면 업로드 시 사용)
   preview: string;
   status: 'idle' | 'uploading' | 'success' | 'error';
   result?: DriveUploadResult;
@@ -54,16 +57,21 @@ interface ReceiptUploadProps {
   invoiceName?: string;
   /** 사용자 이름 */
   userName?: string;
+  /** 사용자 이메일 */
+  userEmail?: string;
   /** 사용자 전화번호 */
   userPhone?: string;
   /** 업로드 완료 시 호출되는 콜백 함수 */
   onComplete?: () => void;
 }
 
-export default function ReceiptUpload({ onFileSelect, invoiceName, userName, userPhone, onComplete }: ReceiptUploadProps) {
+const MAKE_WEBHOOK_URL = 'https://hook.us2.make.com/drbrltv2kk33ngrh1hf7dbfob2lfknbw';
+
+export default function ReceiptUpload({ onFileSelect, invoiceName, userName, userEmail, userPhone, onComplete }: ReceiptUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
   const [files, setFiles] = useState<FileUploadState[]>([]);
   const [showToast, setShowToast] = useState(false);
+  const [showGuideModal, setShowGuideModal] = useState(false);
 
   /**
    * 모든 파일의 업로드가 완료되었는지 확인
@@ -93,14 +101,166 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   };
 
   /**
-   * 파일 미리보기 생성
+   * EXIF Orientation 값을 읽어서 이미지 회전 각도 반환
    */
-  const createPreview = (file: File): Promise<string> => {
+  const getImageOrientation = (file: File): Promise<number> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const view = new DataView(e.target?.result as ArrayBuffer);
+        if (view.getUint16(0, false) !== 0xffd8) {
+          resolve(1); // JPEG가 아니면 기본값
+          return;
+        }
+        const length = view.byteLength;
+        let offset = 2;
+        while (offset < length) {
+          if (view.getUint16(offset, false) === 0xffe1) {
+            // APP1 마커 발견
+            const exifLength = view.getUint16(offset + 2, false);
+            if (view.getUint32(offset + 4, false) === 0x45786966) {
+              // "Exif" 문자열 확인
+              const tiffOffset = offset + 10;
+              const isLittleEndian = view.getUint16(tiffOffset, false) === 0x4949;
+              if (view.getUint16(tiffOffset + 2, false) !== 0x002a) {
+                resolve(1);
+                return;
+              }
+              const ifdOffset = view.getUint32(tiffOffset + 4, isLittleEndian);
+              const ifdPointer = tiffOffset + ifdOffset;
+              const numEntries = view.getUint16(ifdPointer, isLittleEndian);
+              for (let i = 0; i < numEntries; i++) {
+                const entryOffset = ifdPointer + 2 + i * 12;
+                if (view.getUint16(entryOffset, isLittleEndian) === 0x0112) {
+                  // Orientation 태그
+                  resolve(view.getUint16(entryOffset + 8, isLittleEndian));
+                  return;
+                }
+              }
+            }
+            offset += exifLength + 2;
+          } else {
+            offset += 2;
+          }
+        }
+        resolve(1); // Orientation을 찾지 못하면 기본값
+      };
+      reader.onerror = () => resolve(1);
+      reader.readAsArrayBuffer(file.slice(0, 65536)); // 처음 64KB만 읽기
+    });
+  };
+
+  /**
+   * 이미지를 올바른 방향으로 회전
+   */
+  const rotateImage = (file: File, orientation: number): Promise<File> => {
+    return new Promise((resolve, reject) => {
+      if (orientation === 1) {
+        // 회전 불필요
+        resolve(file);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = document.createElement('img');
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(file);
+            return;
+          }
+
+          // Orientation에 따른 회전 및 크기 조정
+          let width = img.width;
+          let height = img.height;
+          let rotate = 0;
+          let flipX = false;
+          let flipY = false;
+
+          switch (orientation) {
+            case 2:
+              flipX = true;
+              break;
+            case 3:
+              rotate = 180;
+              break;
+            case 4:
+              flipY = true;
+              break;
+            case 5:
+              rotate = 90;
+              flipX = true;
+              [width, height] = [height, width];
+              break;
+            case 6:
+              rotate = 90;
+              [width, height] = [height, width];
+              break;
+            case 7:
+              rotate = -90;
+              flipX = true;
+              [width, height] = [height, width];
+              break;
+            case 8:
+              rotate = -90;
+              [width, height] = [height, width];
+              break;
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+
+          ctx.translate(width / 2, height / 2);
+          if (rotate !== 0) {
+            ctx.rotate((rotate * Math.PI) / 180);
+          }
+          if (flipX) {
+            ctx.scale(-1, 1);
+          }
+          if (flipY) {
+            ctx.scale(1, -1);
+          }
+          ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                const rotatedFile = new File([blob], file.name, {
+                  type: file.type,
+                  lastModified: Date.now(),
+                });
+                resolve(rotatedFile);
+              } else {
+                resolve(file);
+              }
+            },
+            file.type,
+            0.95
+          );
+        };
+        img.onerror = () => resolve(file);
+        img.src = e.target?.result as string;
+      };
+      reader.onerror = () => resolve(file);
+      reader.readAsDataURL(file);
+    });
+  };
+
+  /**
+   * 파일 미리보기 생성 (회전 적용)
+   */
+  const createPreview = async (file: File): Promise<string> => {
+    // EXIF Orientation 확인 및 회전
+    const orientation = await getImageOrientation(file);
+    const rotatedFile = await rotateImage(file, orientation);
+
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.onerror = reject;
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(rotatedFile);
     });
   };
 
@@ -157,7 +317,9 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
       );
 
       try {
-        const result = await uploadToCloudinary(fileState.file, index);
+        // 회전된 파일이 있으면 회전된 파일 사용, 없으면 원본 파일 사용
+        const fileToUpload = fileState.rotatedFile || fileState.file;
+        const result = await uploadToCloudinary(fileToUpload, index);
         
         // 업로드 성공 상태로 변경
         setFiles((prev) =>
@@ -167,6 +329,15 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
               : f
           )
         );
+
+        // 전처리된 이미지 URL 확인용 로그
+        if (result.processed_url) {
+          console.log('[ReceiptUpload] 전처리된 이미지 URL:', {
+            fileName: fileState.file.name,
+            originalUrl: result.secure_url || result.webViewLink,
+            processedUrl: result.processed_url,
+          });
+        }
 
         if (onFileSelect) {
           onFileSelect(fileState.file, result);
@@ -217,12 +388,24 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
         return;
       }
 
-      // 새 파일들에 대한 미리보기 생성 및 상태 추가
+      // 새 파일들에 대한 미리보기 생성 및 회전 처리
       const newFiles: FileUploadState[] = await Promise.all(
         validFiles.map(async (file) => {
-          const preview = await createPreview(file);
+          // EXIF Orientation 확인 및 회전
+          const orientation = await getImageOrientation(file);
+          const rotatedFile = await rotateImage(file, orientation);
+          
+          // 회전된 파일로 미리보기 생성
+          const preview = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.onerror = reject;
+            reader.readAsDataURL(rotatedFile);
+          });
+          
           return {
             file,
+            rotatedFile: orientation !== 1 ? rotatedFile : undefined, // 회전이 필요했던 경우만 저장
             preview,
             status: 'idle' as const,
           };
@@ -448,7 +631,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                     {(fileState.file.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                   
-                 
+                
                   
                   {fileState.status === 'error' && fileState.error && (
                     <p className="text-xs text-red-600 dark:text-red-400 truncate">
@@ -505,6 +688,20 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
           <p className="text-sm font-medium text-gray-900 dark:text-gray-100">
             {files.length > 0 ? '영수증을 추가해주세요' : '영수증을 업로드해주세요'}
           </p>
+          {files.length === 0 && (
+            <div className="flex flex-col items-center gap-2 mt-2 text-xs text-gray-500 dark:text-gray-400 text-center max-w-sm">
+              <p>• 영수증 전체가 나오게 찍어주세요.</p>
+              <p>• 흔들리지 않게, 가까이, 빛 반사 없이</p>
+              <p>• 접히거나 구겨진 부분이 보이지 않게 펴서 촬영해주세요.</p>
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(true)}
+              className="mt-2 rounded-full border border-gray-300 px-3 py-1 text-[11px] font-medium text-gray-700 transition-colors hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:text-gray-200 dark:hover:border-gray-400"
+            >
+              촬영 방법 예시 보기
+            </button>
+            </div>
+          )}
         </div>
       </div>
 
@@ -520,6 +717,8 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                   .map((f) => {
                     const result = f.result!;
                     // Cloudinary 원본 응답 형식으로 변환
+                    // 전처리된 URL이 있으면 우선 사용, 없으면 원본 URL 사용
+                    const imageUrl = result.processed_url || result.secure_url || result.webViewLink || result.url || result.webContentLink || '';
                     return {
                       asset_id: result.asset_id || '',
                       public_id: result.public_id || result.fileId,
@@ -534,7 +733,8 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                       asset_folder: result.asset_folder || invoiceName || undefined,
                       display_name: result.display_name || result.name || f.file.name,
                       url: result.url || result.webContentLink || '',
-                      secure_url: result.secure_url || result.webViewLink || '',
+                      secure_url: imageUrl, // 전처리된 이미지 URL 우선 사용
+                      processed_url: result.processed_url, // 전처리된 URL 정보 포함
                     };
                   });
 
@@ -550,15 +750,25 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                   files: successfulFiles,
                   invoiceName,
                   userName,
+                  userEmail,
                 });
 
-                // Make.com 웹훅 호출 (파일 배열만 전송)
-                const response = await fetch('/api/make-webhook', {
+                // Make.com 웹훅 호출 (파일 배열과 사용자 정보 포함)
+                const webhookPayload = {
+                  files: successfulFiles,
+                  user: {
+                    name: userName || '',
+                    email: userEmail || '',
+                    invoiceName: invoiceName || '',
+                  },
+                };
+
+                const response = await fetch(MAKE_WEBHOOK_URL, {
                   method: 'POST',
                   headers: {
                     'Content-Type': 'application/json',
                   },
-                  body: JSON.stringify(successfulFiles),
+                  body: JSON.stringify(webhookPayload),
                 });
 
                 if (!response.ok) {
@@ -569,7 +779,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                 }
 
                 // 성공 시 Toast 표시
-                setShowToast(true);
+              setShowToast(true);
               } catch (error) {
                 console.error('완료 처리 중 오류:', error);
                 alert(
@@ -598,6 +808,66 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
             }
           }}
         />
+      )}
+
+      {/* 촬영 가이드 모달 */}
+      {showGuideModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="receipt-guide-title"
+        >
+          <div className="relative w-full max-w-2xl rounded-[8px] bg-white p-6 shadow-2xl dark:bg-gray-900">
+            <button
+              type="button"
+              onClick={() => setShowGuideModal(false)}
+              className="absolute right-4 top-4 text-sm text-gray-500 transition-colors hover:text-gray-800 dark:text-gray-300 dark:hover:text-white"
+              aria-label="촬영 가이드 닫기"
+            >
+              ✕
+            </button>
+
+            <div className="flex flex-col gap-5 sm:flex-row">
+              <div className="flex-1 space-y-2">
+                <h3 id="receipt-guide-title" className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  영수증 촬영 가이드
+                </h3>
+                <p className="text-sm text-gray-600 dark:text-gray-300">
+                  아래 예시처럼 촬영하면 AI가 쉽게 인식할 수 있어요.
+                </p>
+                <ul className="list-disc space-y-2 pl-5 text-sm text-gray-700 dark:text-gray-200">
+                  <li>영수증 전체가 프레임 안에 나오도록 촬영해주세요.</li>
+                  <li>빛 반사가 없는 평평한 곳에 두고 수직으로 촬영하면 좋아요.</li>
+                  <li>배경이 단색일수록 인식률이 올라갑니다.</li>
+                  <li>가능하면 한 장씩 촬영하고, 여러 장은 개별 업로드 해주세요.</li>
+                </ul>
+              </div>
+
+              <div className="flex flex-1 items-center justify-center rounded-[8px] bg-gray-100 p-3 dark:bg-gray-800">
+                <div className="relative h-64 w-full">
+                  <Image
+                    src="/receipt-guide-example.jpg"
+                    alt="영수증 촬영 예시"
+                    fill
+                    sizes="(max-width: 768px) 100vw, 40vw"
+                    className="rounded-[6px] object-cover"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="mt-5 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setShowGuideModal(false)}
+                className="rounded-[4px] border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:border-gray-500 hover:text-gray-900 dark:border-gray-600 dark:text-gray-200 dark:hover:border-gray-400"
+              >
+                이해했어요
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

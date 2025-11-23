@@ -106,6 +106,35 @@ export async function POST(req: NextRequest) {
     console.log("[upload] Cloudinary 업로드 성공:", uploadResult.public_id);
     console.log("[upload] 메타데이터:", { invoiceName, userName, userPhone });
 
+    // 전처리된 이미지 URL 생성
+    // Cloudinary URL 직접 생성 (sdk_semver 에러 방지)
+    // 변환 파라미터는 쉼표로 구분하여 하나의 변환 문자열로 결합
+    const cloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
+    
+    // Cloudinary 변환 파라미터 (무료 플랜 호환)
+    // c_auto: 이미지 내용 기반 자동 크롭
+    // g_auto: 자동 중심 맞춤 (이미지의 주요 영역을 기준으로 크롭 영역 계산)
+    // q_auto: 자동 품질 최적화
+    // 쉼표로 구분된 단일 변환에 여러 옵션을 적용
+    const transformations = 'c_auto,g_auto,q_auto';
+    
+    // public_id는 이미 형식이 포함되지 않은 상태
+    // 한글 등 특수문자가 포함된 경우 URL 인코딩 필요
+    // 단, 슬래시(/)는 경로 구분자이므로 인코딩하지 않음
+    const uploadedPublicId = uploadResult.public_id
+      .split('/')
+      .map(segment => encodeURIComponent(segment))
+      .join('/');
+    const format = uploadResult.format || 'jpg';
+    
+    // 전처리된 이미지 URL 생성 (public_id는 URL 인코딩, 슬래시는 유지)
+    const processedUrl = `https://res.cloudinary.com/${cloudName}/image/upload/${transformations}/${uploadedPublicId}.${format}`;
+
+    // 전처리된 이미지 URL 로그 출력 (디버깅용)
+    console.log("[upload] 전처리된 이미지 URL:", processedUrl);
+    console.log("[upload] 원본 이미지 URL:", uploadResult.secure_url);
+    console.log("[upload] 변환 파라미터:", transformations);
+
     // Cloudinary 원본 응답 형식에 맞게 반환
     return NextResponse.json(
       {
@@ -124,11 +153,13 @@ export async function POST(req: NextRequest) {
         display_name: uploadResult.display_name || uploadResult.original_filename || file.name,
         url: uploadResult.url,
         secure_url: uploadResult.secure_url,
+        // 전처리된 이미지 URL
+        processed_url: processedUrl,
         // 호환성을 위한 필드들
         fileId: uploadResult.public_id,
         name: uploadResult.original_filename || file.name,
-        webViewLink: uploadResult.secure_url,
-        webContentLink: uploadResult.url,
+        webViewLink: processedUrl, // 전처리된 이미지 사용
+        webContentLink: processedUrl, // 전처리된 이미지 사용
         // 사용자 정보 및 인보이스명 포함 (구글 시트 저장용)
         invoiceName: invoiceName || undefined,
         userName: userName || undefined,

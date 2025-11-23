@@ -6,7 +6,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 
-const MAKE_WEBHOOK_URL = 'https://hook.eu2.make.com/fmv9cemu1lotfy2wns9ehp0rhm6dk5fd';
+const MAKE_WEBHOOK_URL = 'https://hook.us2.make.com/drbrltv2kk33ngrh1hf7dbfob2lfknbw';
 
 export async function POST(request: NextRequest) {
   try {

@@ -102,6 +102,7 @@ export default function Home() {
                   onFileSelect={handleFileSelect}
                   invoiceName={userInfo?.invoiceName}
                   userName={userInfo?.name}
+                  userEmail={userInfo?.email}
                   onComplete={handleUploadComplete}
                 />
               </div>
@@ -118,14 +119,7 @@ export default function Home() {
                 >
                   시작하기
                 </button>
-                <a
-                  className="flex h-12 flex-1 items-center justify-center rounded-[4px] border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px] md:flex-none"
-                  href=""
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  문의하기
-                </a>
+
               </div>
             )}
           </div>

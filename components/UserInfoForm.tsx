@@ -14,6 +14,7 @@ import { useState, FormEvent, ChangeEvent } from 'react';
 
 export interface UserInfo {
   name: string;
+  email: string; // 이메일 (필수)
   invoiceName: string; // "이름_YYYYMMDD" 형식의 인보이스 식별자
 }
 
@@ -26,7 +27,8 @@ interface UserInfoFormProps {
 
 export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) {
   const [name, setName] = useState('');
-  const [errors, setErrors] = useState<{ name?: string; phone?: string }>({});
+  const [email, setEmail] = useState('');
+  const [errors, setErrors] = useState<{ name?: string; email?: string }>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
 
 
@@ -44,18 +46,39 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
     }
   };
 
+  /**
+   * 이메일 변경 핸들러
+   */
+  const handleEmailChange = (e: ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value;
+    setEmail(value);
+    // 실시간 에러 제거
+    if (errors.email && value.trim()) {
+      setErrors({ ...errors, email: undefined });
+    }
+  };
+
   
 
   /**
    * 폼 유효성 검사
    */
   const validate = (): boolean => {
-    const newErrors: { name?: string;} = {};
+    const newErrors: { name?: string; email?: string } = {};
 
     if (!name.trim()) {
       newErrors.name = '이름을 입력해주세요.';
     }
 
+    // 이메일 필수 입력 및 유효성 검사
+    if (!email.trim()) {
+      newErrors.email = '이메일을 입력해주세요.';
+    } else {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(email.trim())) {
+        newErrors.email = '올바른 이메일 형식을 입력해주세요.';
+      }
+    }
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -90,6 +113,7 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
     
     onSubmit({
       name: name.trim(),
+      email: email.trim(), // 이메일 필수 입력
       invoiceName,
     });
     
@@ -103,7 +127,7 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
           사용자 정보 입력
         </h2>
         <p className="text-xs text-gray-500 dark:text-gray-400">
-          영수증 처리를 위해 이름 혹은 사업자명을 입력해주세요.
+          영수증 처리를 위해 아래 정보를 입력해주세요.
         </p>
       </div>
 
@@ -145,7 +169,41 @@ export default function UserInfoForm({ onSubmit, onCancel }: UserInfoFormProps) 
           )}
         </div>
 
-
+        {/* 이메일 입력 */}
+        <div className="space-y-2">
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={handleEmailChange}
+            placeholder="example@email.com"
+            className={`
+              w-full h-12 px-4 py-2
+              rounded-[4px] border
+              bg-white dark:bg-gray-900
+              text-black dark:text-zinc-50
+              placeholder-gray-400 dark:placeholder-gray-500
+              transition-colors
+              focus:outline-none focus:ring-2 focus:ring-offset-0
+              ${
+                errors.email
+                  ? 'border-red-500 focus:ring-red-500'
+                  : 'border-gray-300 dark:border-gray-700 focus:border-gray-500 dark:focus:border-gray-500 focus:ring-gray-500'
+              }
+            `}
+            aria-invalid={!!errors.email}
+            aria-describedby={errors.email ? 'email-error' : undefined}
+          />
+          {errors.email && (
+            <p
+              id="email-error"
+              className="text-sm text-red-500"
+              role="alert"
+            >
+              {errors.email}
+            </p>
+          )}
+        </div>
 
         {/* 버튼 영역 */}
         <div className="flex flex-col gap-3 pt-2">
