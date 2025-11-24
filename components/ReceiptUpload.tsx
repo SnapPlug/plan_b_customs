@@ -753,41 +753,72 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                 }
 
                 // 디버깅 로그
-                console.log('[ReceiptUpload] Sending to webhook:', {
-                  fileCount: successfulFiles.length,
-                  files: successfulFiles,
-                  invoiceName,
-                  userName,
-                  userEmail,
-                });
+                console.log('[ReceiptUpload] 영수증 개수:', successfulFiles.length);
+                console.log('[ReceiptUpload] 각 영수증마다 webhook 호출 시작');
 
-                // Make.com 웹훅 호출 (파일 배열과 사용자 정보 포함)
-                const webhookPayload = {
-                  files: successfulFiles,
-                  user: {
-                    name: userName || '',
-                    email: userEmail || '',
-                    invoiceName: invoiceName || '',
-                  },
-                };
+                // 각 영수증마다 개별적으로 webhook 호출
+                const webhookResults = await Promise.allSettled(
+                  successfulFiles.map(async (file, index) => {
+                    const webhookPayload = {
+                      file: file, // 단일 파일 객체
+                      user: {
+                        name: userName || '',
+                        email: userEmail || '',
+                        invoiceName: invoiceName || '',
+                      },
+                    };
 
-                const response = await fetch(MAKE_WEBHOOK_URL, {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify(webhookPayload),
-                });
+                    console.log(`[ReceiptUpload] Webhook 호출 중 (${index + 1}/${successfulFiles.length}):`, {
+                      fileName: file.display_name,
+                      public_id: file.public_id,
+                    });
 
-                if (!response.ok) {
-                  const errorData = await response.json().catch(() => ({}));
+                    const response = await fetch(MAKE_WEBHOOK_URL, {
+                      method: 'POST',
+                      headers: {
+                        'Content-Type': 'application/json',
+                      },
+                      body: JSON.stringify(webhookPayload),
+                    });
+
+                    if (!response.ok) {
+                      const errorData = await response.json().catch(() => ({}));
+                      throw new Error(
+                        errorData.message || `웹훅 호출에 실패했습니다. (파일: ${file.display_name})`
+                      );
+                    }
+
+                    console.log(`[ReceiptUpload] Webhook 호출 성공 (${index + 1}/${successfulFiles.length}):`, file.display_name);
+                    return { success: true, file: file.display_name };
+                  })
+                );
+
+                // 실패한 webhook 호출 확인
+                const failedWebhooks = webhookResults.filter(
+                  (result) => result.status === 'rejected'
+                );
+
+                if (failedWebhooks.length > 0) {
+                  const errorMessages = failedWebhooks
+                    .map((result) => 
+                      result.status === 'rejected' 
+                        ? result.reason?.message || '알 수 없는 오류'
+                        : ''
+                    )
+                    .join('\n');
+                  
                   throw new Error(
-                    errorData.message || '웹훅 호출에 실패했습니다.'
+                    `${failedWebhooks.length}개의 영수증 처리 중 오류가 발생했습니다:\n${errorMessages}`
                   );
                 }
 
+                console.log('[ReceiptUpload] 모든 webhook 호출 완료:', {
+                  total: successfulFiles.length,
+                  success: webhookResults.filter(r => r.status === 'fulfilled').length,
+                });
+
                 // 성공 시 Toast 표시
-              setShowToast(true);
+                setShowToast(true);
               } catch (error) {
                 console.error('완료 처리 중 오류:', error);
                 alert(
