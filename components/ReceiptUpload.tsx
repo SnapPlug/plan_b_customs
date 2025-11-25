@@ -257,18 +257,14 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   };
 
   /**
-   * 파일 미리보기 생성 (회전 적용)
+   * 파일 미리보기 생성 (원본 그대로 사용, 회전 없음)
    */
   const createPreview = async (file: File): Promise<string> => {
-    // EXIF Orientation 확인 및 회전
-    const orientation = await getImageOrientation(file);
-    const rotatedFile = await rotateImage(file, orientation);
-
     return new Promise((resolve, reject) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
       reader.onerror = reject;
-      reader.readAsDataURL(rotatedFile);
+      reader.readAsDataURL(file);
     });
   };
 
@@ -325,9 +321,8 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
       );
 
       try {
-        // 회전된 파일이 있으면 회전된 파일 사용, 없으면 원본 파일 사용
-        const fileToUpload = fileState.rotatedFile || fileState.file;
-        const result = await uploadToCloudinary(fileToUpload, index);
+        // 원본 파일 그대로 업로드 (회전 없음)
+        const result = await uploadToCloudinary(fileState.file, index);
         
         // 업로드 성공 상태로 변경
         setFiles((prev) =>
@@ -396,24 +391,19 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
         return;
       }
 
-      // 새 파일들에 대한 미리보기 생성 및 회전 처리
+      // 새 파일들에 대한 미리보기 생성 (원본 그대로 사용, 회전 없음)
       const newFiles: FileUploadState[] = await Promise.all(
         validFiles.map(async (file) => {
-          // EXIF Orientation 확인 및 회전
-          const orientation = await getImageOrientation(file);
-          const rotatedFile = await rotateImage(file, orientation);
-          
-          // 회전된 파일로 미리보기 생성
+          // 원본 파일로 미리보기 생성
           const preview = await new Promise<string>((resolve, reject) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
             reader.onerror = reject;
-            reader.readAsDataURL(rotatedFile);
+            reader.readAsDataURL(file);
           });
           
           return {
             file,
-            rotatedFile: orientation !== 1 ? rotatedFile : undefined, // 회전이 필요했던 경우만 저장
             preview,
             status: 'idle' as const,
           };

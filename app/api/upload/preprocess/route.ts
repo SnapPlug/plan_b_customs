@@ -3,8 +3,9 @@
  * 
  * 업로드된 이미지에 전처리를 적용합니다:
  * - 문서 자동 감지 및 크롭
- * - 자동 회전 보정
  * - 배경 제거 (옵션)
+ * 
+ * 참고: 회전은 클라이언트 측에서 처리하므로 서버 측에서는 회전하지 않습니다.
  */
 
 import { v2 as cloudinary } from "cloudinary";
@@ -34,6 +35,7 @@ export async function POST(req: NextRequest) {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
     
     // 기본 변환: 자동 크롭 + 품질 최적화 (무료 플랜 호환)
+    // 회전은 클라이언트 측에서 처리하므로 서버 측에서는 회전하지 않음
     // c_auto: 이미지 내용 기반 자동 크롭
     // g_auto: 자동 중심 맞춤
     // q_auto: 자동 품질 최적화

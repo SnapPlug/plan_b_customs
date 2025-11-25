@@ -112,6 +112,7 @@ export async function POST(req: NextRequest) {
     const cloudName = process.env.CLOUDINARY_CLOUD_NAME || '';
     
     // Cloudinary 변환 파라미터 (무료 플랜 호환)
+    // 회전은 클라이언트 측에서 처리하므로 서버 측에서는 회전하지 않음
     // c_auto: 이미지 내용 기반 자동 크롭
     // g_auto: 자동 중심 맞춤 (이미지의 주요 영역을 기준으로 크롭 영역 계산)
     // q_auto: 자동 품질 최적화
