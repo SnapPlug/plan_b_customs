@@ -92,6 +92,9 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   /**
    * 파일 유효성 검사
    * 이미지 파일(JPEG, PNG)만 허용
+   * 
+   * 참고: 클라이언트에서 직접 Cloudinary로 업로드하므로 Vercel의 4.5MB 제한을 우회합니다.
+   * Cloudinary의 무료 플랜 제한은 10MB이므로 10MB까지 허용합니다.
    */
   const validateFile = (file: File): string | null => {
     const validTypes = ['image/jpeg', 'image/jpg', 'image/png'];
@@ -269,43 +272,172 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
   };
 
   /**
-   * Cloudinary 업로드
+   * Cloudinary 직접 업로드
+   * 
+   * 클라이언트에서 직접 Cloudinary로 업로드하여 Vercel의 4.5MB 페이로드 제한을 우회합니다.
+   * 1. 서버에서 업로드 서명 생성
+   * 2. 클라이언트에서 Cloudinary로 직접 업로드
+   * 3. 업로드 완료 후 서버에서 메타데이터 업데이트
    */
   const uploadToCloudinary = useCallback(async (file: File, index: number) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    
-    // 인보이스 이름이 있으면 함께 전송
-    if (invoiceName) {
-      formData.append('invoiceName', invoiceName);
-    }
-    
-    // 파일 인덱스 전송 (public_id 생성용)
-    formData.append('fileIndex', index.toString());
-    
-    // 사용자 정보 전송 (구글 시트 저장용)
-    if (userName) {
-      formData.append('userName', userName);
-    }
-    if (userPhone) {
-      formData.append('userPhone', userPhone);
-    }
+    try {
+      // 1. 서버에서 업로드 서명 생성
+      const signatureResponse = await fetch('/api/upload/signature', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          invoiceName,
+          userName,
+          userPhone,
+          fileIndex: index.toString(),
+        }),
+      });
 
-    const response = await fetch('/api/upload', {
+      if (!signatureResponse.ok) {
+        const errorBody = await signatureResponse.json().catch(() => ({}));
+        throw new Error(
+          errorBody?.message || '업로드 서명 생성에 실패했습니다.'
+        );
+      }
+
+      const { signature, timestamp, cloudName, apiKey, params } = await signatureResponse.json();
+
+      console.log('[ReceiptUpload] 서명 받음:', { signature, timestamp, params });
+
+      // 2. 클라이언트에서 Cloudinary로 직접 업로드
+      // 서명 생성 시 사용한 파라미터와 정확히 일치하도록 전송
+      // 중요: 서명에 포함된 파라미터만 전송해야 함 (file, api_key, signature, resource_type는 서명에 포함되지 않음)
+      const uploadFormData = new FormData();
+      
+      // file은 서명에 포함되지 않지만 업로드에 필요
+      uploadFormData.append('file', file);
+      
+      // api_key는 서명에 포함되지 않지만 인증에 필요
+      uploadFormData.append('api_key', apiKey);
+      
+      // timestamp는 서명에 포함되므로 정확히 일치해야 함
+      uploadFormData.append('timestamp', timestamp.toString());
+      
+      // signature는 서명 자체이므로 포함
+      uploadFormData.append('signature', signature);
+      
+      // 서명 생성 시 사용한 파라미터들을 정확히 동일하게 전송
+      
+      // public_id 또는 folder (둘 중 하나만)
+      if (params.public_id) {
+        uploadFormData.append('public_id', params.public_id);
+      } else if (params.folder) {
+        uploadFormData.append('folder', params.folder);
+      }
+      
+      // asset_folder
+      if (params.asset_folder) {
+        uploadFormData.append('asset_folder', params.asset_folder);
+      }
+      
+      // context는 서명에 포함하지 않음 (업로드 후 메타데이터로 설정)
+      
+      // 디버깅: 전송할 파라미터 로그
+      // 디버깅: 전송할 파라미터 로그 (file은 제외)
+      console.log('[ReceiptUpload] 업로드 파라미터:', {
+        api_key: apiKey,
+        timestamp: timestamp.toString(),
+        signature,
+        public_id: params.public_id,
+        folder: params.folder,
+        asset_folder: params.asset_folder,
+      });
+
+      // 타임아웃 설정 (60초 - 대용량 파일 고려)
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
+
+      const uploadResponse = await fetch(
+        `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+        {
+          method: 'POST',
+          body: uploadFormData,
+          signal: controller.signal,
+        }
+      );
+
+      clearTimeout(timeoutId);
+
+      if (!uploadResponse.ok) {
+        const errorBody = await uploadResponse.json().catch(() => ({}));
+        throw new Error(
+          errorBody?.error?.message || 'Cloudinary 업로드에 실패했습니다.'
+        );
+      }
+
+      const uploadResult = await uploadResponse.json();
+
+      // 3. 업로드 완료 후 서버에서 메타데이터 업데이트
+      if (uploadResult.public_id && (invoiceName || userName || userPhone)) {
+        try {
+          await fetch('/api/upload/metadata', {
       method: 'POST',
-      body: formData,
-    });
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              publicId: uploadResult.public_id,
+              invoiceName,
+              userName,
+              userPhone,
+            }),
+          });
+        } catch (metadataError) {
+          // 메타데이터 업데이트 실패는 경고만 하고 업로드는 성공으로 처리
+          console.warn('[ReceiptUpload] 메타데이터 업데이트 실패:', metadataError);
+        }
+      }
 
-    if (!response.ok) {
-      const errorBody = await response.json().catch(() => ({}));
-      const message =
-        typeof errorBody?.message === 'string'
-          ? errorBody.message
-          : '파일 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.';
-      throw new Error(message);
+      // 전처리된 이미지 URL 생성
+      const cloudNameEnv = cloudName;
+      const transformations = 'c_auto,g_auto,q_auto';
+      const uploadedPublicId = uploadResult.public_id
+        .split('/')
+        .map((segment: string) => encodeURIComponent(segment))
+        .join('/');
+      const format = uploadResult.format || 'jpg';
+      const processedUrl = `https://res.cloudinary.com/${cloudNameEnv}/image/upload/${transformations}/${uploadedPublicId}.${format}`;
+
+      // Cloudinary 원본 응답 형식에 맞게 반환
+      return {
+        asset_id: uploadResult.asset_id,
+        public_id: uploadResult.public_id,
+        format: uploadResult.format,
+        version: uploadResult.version,
+        resource_type: uploadResult.resource_type,
+        type: uploadResult.type,
+        created_at: uploadResult.created_at,
+        bytes: uploadResult.bytes,
+        width: uploadResult.width,
+        height: uploadResult.height,
+        asset_folder: uploadResult.asset_folder || invoiceName || undefined,
+        display_name: uploadResult.original_filename || file.name,
+        url: uploadResult.url,
+        secure_url: uploadResult.secure_url,
+        processed_url: processedUrl,
+        fileId: uploadResult.public_id,
+        name: uploadResult.original_filename || file.name,
+        webViewLink: processedUrl,
+        webContentLink: processedUrl,
+        invoiceName: invoiceName || undefined,
+        userName: userName || undefined,
+        userPhone: userPhone || undefined,
+      } as DriveUploadResult;
+    } catch (error) {
+      // AbortError (타임아웃) 처리
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('업로드 시간이 초과되었습니다. 파일 크기를 줄이거나 잠시 후 다시 시도해주세요.');
+      }
+      
+      throw error;
     }
-
-    return (await response.json()) as DriveUploadResult;
   }, [invoiceName, userName, userPhone]);
 
   /**
@@ -629,7 +761,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                     {(fileState.file.size / (1024 * 1024)).toFixed(2)} MB
                   </p>
                   
-                
+                 
                   
                   {fileState.status === 'error' && fileState.error && (
                     <p className="text-xs text-red-600 dark:text-red-400 truncate">
@@ -808,7 +940,7 @@ export default function ReceiptUpload({ onFileSelect, invoiceName, userName, use
                 });
 
                 // 성공 시 Toast 표시
-                setShowToast(true);
+              setShowToast(true);
               } catch (error) {
                 console.error('완료 처리 중 오류:', error);
                 alert(

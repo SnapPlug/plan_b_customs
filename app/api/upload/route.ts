@@ -49,13 +49,31 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // 파일을 버퍼로 변환
+    // 파일 크기 확인
+    const fileSizeMB = file.size / (1024 * 1024);
+    console.log("[upload] 파일 정보:", {
+      name: file.name,
+      size: `${fileSizeMB.toFixed(2)}MB`,
+      type: file.type,
+    });
+
+    // 참고: 이 엔드포인트는 이제 사용되지 않습니다 (클라이언트에서 직접 업로드).
+    // 하지만 호환성을 위해 유지하며, 10MB 제한을 적용합니다.
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_FILE_SIZE) {
+      return NextResponse.json(
+        {
+          message: `파일 크기가 너무 큽니다. 최대 ${(MAX_FILE_SIZE / (1024 * 1024)).toFixed(0)}MB까지 업로드 가능합니다.`,
+        },
+        { status: 413 }
+      );
+    }
+
+    // 파일을 버퍼로 변환 (Base64 인코딩 없이 직접 전달)
+    // Cloudinary SDK는 Buffer를 직접 지원하므로 Base64 변환 불필요
+    // 이렇게 하면 메모리 사용량과 페이로드 크기를 크게 줄일 수 있음
     const arrayBuffer = await file.arrayBuffer();
     const buffer = Buffer.from(arrayBuffer);
-
-    // Base64로 인코딩하여 Cloudinary에 업로드
-    const base64File = buffer.toString("base64");
-    const dataURI = `data:${file.type};base64,${base64File}`;
 
     // public_id 생성: receipts/[이름]_[날짜]_[index] 형식
     let publicId: string | undefined;
@@ -101,7 +119,24 @@ export async function POST(req: NextRequest) {
       uploadOptions.unique_filename = true;
     }
 
-    const uploadResult = await cloudinary.uploader.upload(dataURI, uploadOptions);
+    // Buffer를 직접 전달 (upload_stream 사용)
+    // Cloudinary SDK는 스트림을 지원하므로 Buffer를 스트림으로 전달
+    const uploadResult = await new Promise<any>((resolve, reject) => {
+      const stream = cloudinary.uploader.upload_stream(
+        {
+          ...uploadOptions,
+          resource_type: uploadOptions.resource_type || "auto",
+        },
+        (error, result) => {
+          if (error || !result) {
+            return reject(error);
+          }
+          resolve(result);
+        }
+      );
+
+      stream.end(buffer);
+    });
 
     console.log("[upload] Cloudinary 업로드 성공:", uploadResult.public_id);
     console.log("[upload] 메타데이터:", { invoiceName, userName, userPhone });
@@ -124,7 +159,7 @@ export async function POST(req: NextRequest) {
     // 단, 슬래시(/)는 경로 구분자이므로 인코딩하지 않음
     const uploadedPublicId = uploadResult.public_id
       .split('/')
-      .map(segment => encodeURIComponent(segment))
+      .map((segment: string) => encodeURIComponent(segment))
       .join('/');
     const format = uploadResult.format || 'jpg';
     
@@ -172,14 +207,28 @@ export async function POST(req: NextRequest) {
     console.error("[upload] Cloudinary 업로드 실패", error);
 
     let errorMessage = "파일 업로드에 실패했습니다. 잠시 후 다시 시도해주세요.";
+    let statusCode = 500;
 
     if (error instanceof Error) {
       const errorMsg = error.message.toLowerCase();
 
-      if (errorMsg.includes("invalid") && errorMsg.includes("api")) {
+      // 파일 크기 관련 에러
+      if (errorMsg.includes("413") || errorMsg.includes("payload too large") || errorMsg.includes("request entity too large")) {
+        errorMessage = "파일 크기가 너무 큽니다. 최대 10MB까지 업로드 가능합니다.";
+        statusCode = 413;
+      }
+      // 타임아웃 관련 에러
+      else if (errorMsg.includes("timeout") || errorMsg.includes("timed out") || errorMsg.includes("503")) {
+        errorMessage = "업로드 시간이 초과되었습니다. 파일 크기를 줄이거나 잠시 후 다시 시도해주세요.";
+        statusCode = 503;
+      }
+      // Cloudinary API 에러
+      else if (errorMsg.includes("invalid") && errorMsg.includes("api")) {
         errorMessage = "Cloudinary API 설정이 잘못되었습니다. .env.local 파일의 CLOUDINARY 설정을 확인해주세요.";
+        statusCode = 500;
       } else if (errorMsg.includes("unauthorized") || errorMsg.includes("401")) {
         errorMessage = "Cloudinary 인증에 실패했습니다. API 키와 시크릿을 확인해주세요.";
+        statusCode = 401;
       } else {
         errorMessage = error.message || errorMessage;
       }
@@ -190,7 +239,7 @@ export async function POST(req: NextRequest) {
         message: errorMessage,
         error: process.env.NODE_ENV === "development" ? (error instanceof Error ? error.message : String(error)) : undefined,
       },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }
